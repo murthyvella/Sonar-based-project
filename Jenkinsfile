@@ -1,90 +1,63 @@
-pipeline {
+pipeline{
     agent any
-
-    tools {
+    
+    environment{
+         SCANNER_HOME = 'sonar-scanner'
+    }
+    tools{
         maven 'maven3'
-        jdk 'jdk17'
-        // Remove the sonarQube line if it still causes issues
     }
-
-    environment {
-        SCANNER_HOME = tool 'sonar-scanner'
-        DOCKERHUB_USERNAME = 'kastrov'  // Set this directly to your Docker Hub username
-        DOCKER_IMAGE = "${DOCKERHUB_USERNAME}/spotify-app:latest"
-    }
-
-    stages {
-        stage('Git Checkout') {
-            steps {
-                git branch: 'main', url: 'https://github.com/KastroVKiran/SonarQube-Project-Kastro.git'
+    stages{
+        stage('codecheckout'){
+            steps{
+                git branch: 'main', url: 'https://github.com/murthyvella/Sonar-based-project.git'
             }
         }
-
-        stage('Compile') {
-            steps {
-                sh "mvn compile"
+        stage('buildcode'){
+            steps{
+                sh 'mvn compile'
             }
         }
-
-        stage('Test') {
-            steps {
-                sh "mvn test"
+        stage('test'){
+            steps{
+                sh 'mvn test'
             }
         }
-
-        stage('Sonar Analysis') {
-            steps {
-                withSonarQubeEnv('sonar-server') {
-                    sh "$SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=Kastro -Dsonar.projectKey=KastroKey -Dsonar.java.binaries=target"
-                }
+        stage('analysis'){
+            steps{
+                sh '''
+                 mvn clean verify sonar:sonar \
+                 -Dsonar.projectKey=sonar-project \
+                 -Dsonar.host.url=http://54.167.63.76 \
+                 -Dsonar.login=sqp_113c73e5b7ac461809cc131f694fc55dfbb0a825
+                
+                '''
             }
         }
-
-        stage('Build') {
-            steps {
-                sh "mvn package"
+        stage('build the code'){
+            steps{
+                sh 'mvn package'
             }
         }
-
-        stage('Docker Build') {
-            steps {
-                script {
-                    // Building Docker Image
-                    sh "docker build -t $DOCKER_IMAGE ."
-                }
+        stage('build the image'){
+            steps{
+                sh 'docker build -t spotifyapp:latest .'
+                
             }
         }
-
-        stage('Docker Push to DockerHub') {
-            steps {
-                script {
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_PASSWORD')]) {
-                        echo "Docker Hub Username: ${DOCKERHUB_USERNAME}"  // Check the username
-                        echo "Docker Image: ${DOCKER_IMAGE}"  // Check the image
-                        sh "docker login -u ${DOCKERHUB_USERNAME} -p ${DOCKERHUB_PASSWORD}"
-                        sh "docker push $DOCKER_IMAGE"
-                    }
-                }
+        stage('tag and pushcode'){
+            steps{
+                  sh  'docker tag spotifyapp:latest murthyvella/spotifyapp:latest'
+                withCredentials([usernamePassword(credentialsId: 'docker', passwordVariable: 'dockerpass', usernameVariable: 'dockeruser')]) {
+                  sh 'docker login -u ${dockeruser} -p ${dockerpass} '
+                  sh 'docker push murthyvella/spotifyapp:latest '
+              }
             }
         }
-
-        stage('Run Docker Container') {
-            steps {
-                script {
-                    // Stop any existing container with the same name
-                    sh "docker stop spotify-app || true && docker rm spotify-app || true"
-                    
-                    // Running the container
-                    sh "docker run -d --name spotify-app -p 5555:5555 $DOCKER_IMAGE"
-                }
+        stage('application live'){
+            steps{
+                sh 'docker run -d --name spotify-app -p 5555:5555 murthyvella/spotifyapp:latest'
             }
-        }
-    }
-
-    post {
-        always {
-            echo 'Cleaning up workspace...'
-            cleanWs()  // Clean up the workspace after the build
         }
     }
 }
